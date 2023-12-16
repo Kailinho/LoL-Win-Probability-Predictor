@@ -5,25 +5,33 @@ import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
 
+puuids = ["K99JJoKjGncUxrr3I-bkpBccFtclLglnNGeClOrqLOHvQDDdk2Evie7gS4M1WrcqoMLt0PXptFmJ6w",
+  "-23srJpsUju9lhDerocvX4vyCUBo1hy_7vmUK-4Lrd8SWwvQhKNXXrN59DzJCfe7fDuwwJ96HoPx-A",
+  "PjC0jg9-PBOp5U3EHHhjzVr9CE2zO52U8XWbgY3oyzH8uPiD8WMGydSaFn6SEb9di3PotV9QpeFqAw",
+  "k4nrtbfL-1H_v-vZSWGV5VJgYDZI9nbKMczJZVJe2PA0ftWfq4SZlAazXa05Ba2sXkFstqb2yQg3lA",
+  "W4lmDnUA7NGbcWIYGv9rR3TdozbM-Rb2Sw6ZDU-YCGVPqxHhRYbt2-Q1JlbWXAnGIBt-3Ko2s1-w-Q",
+  "UwlApvfPP2oVFUaYsn6XDirzuPEK2iu-isagNb3oN5lv9AJ9j6J47PgOkonUy8KrYAzedWk8D5tTDg"
+]
+
+
 riot_api_base_url = 'https://americas.api.riotgames.com/'
-api_key = 'RGAPI-58285aa9-5170-4565-aab3-2d18a5968b3d'  # Replace with your actual API key
+api_key = 'RGAPI-3fb1dc4d-f2e3-4fd4-98fe-962d1739bec6'
 headers = {'X-Riot-Token': api_key}
 summoner_name = 'Kailinho'
-puuid = '-23srJpsUju9lhDerocvX4vyCUBo1hy_7vmUK-4Lrd8SWwvQhKNXXrN59DzJCfe7fDuwwJ96HoPx-A'
-match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
 database_uri = 'postgresql://kai:kkaakkaa@localhost:5432/lol_matchinfo'
 engine = create_engine(database_uri)
 participants_df = pd.DataFrame()
 events_df = pd.DataFrame()
 total_matchstats_df = pd.DataFrame()
 
-def get_matches():
+def get_matches(puuid):
     global participants_df, events_df, total_matchstats_df
     try:
+        match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
         response = requests.get(match_list_url, headers=headers)
         match_id_list = response.json()
 
-        print('Match IDs:', match_id_list)
+        print(f'Match IDs for PUUID {puuid}: {match_id_list}')
 
         for match_id in match_id_list:
             get_match_info(match_id)
@@ -34,10 +42,7 @@ def get_matches():
 
 def collect_aggregated_data(frames,match_id):
     global participants_df, events_df 
-    dataframes_to_save = {
-        'Participants Data': participants_df,
-        'Events Data': events_df
-    }
+
     participants_columns = ['match_id','participant_id','currentGold', 'magicDamageDone', 'physicalDamageDone', 'trueDamageDone',
                              'magicDamageTaken', 'physicalDamageTaken', 'trueDamageTaken', 'xp',
                              'timeEnemySpentControlled', 'totalGold','timestamp']
@@ -127,7 +132,6 @@ def collect_aggregated_data(frames,match_id):
     return participants_df, events_df
 def append_to_database(dataframe, table_name):
     try:
-        # Append DataFrame to the specified table in the database
         dataframe.to_sql(table_name, con=engine, if_exists='append', index=False)
         print(f"Data successfully appended to {table_name} in the database.")
     except Exception as e:
@@ -177,7 +181,7 @@ def get_match_info(match_id):
 
         participants_data = []
 
-        for participant_id in range(1, 11):  # Assuming there are 10 participants in a match
+        for participant_id in range(1, 11):
             participant_data = {'participantId': participant_id}
             for key in key_list:
                 # Extract additional participant information from key_list
@@ -188,6 +192,7 @@ def get_match_info(match_id):
             participants_data.append(participant_data)
 
         # match_stats_data['participantsData'] = participants_data
+
         total_matchstats_df = pd.DataFrame(columns=key_list)
         total_matchstats_df = pd.concat([total_matchstats_df, pd.DataFrame(participants_data)], ignore_index=True).fillna(0)
         total_matchstats_df[['largestMultiKill', 'longestTimeSpentLiving', 'pentaKills', 'quadraKills', 'sightWardsBoughtInGame', 'timeCCingOthers', 'totalMinionsKilled', 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'tripleKills', 'turretKills', 'visionScore']] = total_matchstats_df[['largestMultiKill', 'longestTimeSpentLiving', 'pentaKills', 'quadraKills', 'sightWardsBoughtInGame', 'timeCCingOthers', 'totalMinionsKilled', 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'tripleKills', 'turretKills', 'visionScore']].astype(int)
@@ -205,4 +210,6 @@ def get_match_info(match_id):
 
 
 
-get_matches()
+
+for puuid in puuids:
+    get_matches(puuid)

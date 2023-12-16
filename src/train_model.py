@@ -13,6 +13,11 @@ from tensorflow.keras import layers
 import numpy as np
 from sklearn.ensemble import VotingClassifier
 from sklearn.model_selection import cross_val_score
+import joblib
+from joblib import Parallel, delayed
+from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping
 
 
 # Connect to the PostgreSQL database
@@ -24,17 +29,13 @@ connection = psycopg2.connect(
     port="5432"
 )
 
-# Create a database engine for SQLalchemy
 engine = create_engine(
     'postgresql://kai:kkaakkaa@localhost:5432/lol_matchinfo'
 )
-
-# Replace 'your_table_name' with your actual table names
 participants_query = 'SELECT * FROM participants'
 events_query = 'SELECT * FROM events'
 complete_match_query = 'SELECT * FROM total_matchstats'
 
-# Load data into DataFrames
 participants_data = pd.read_sql_query(participants_query, connection)
 events_data = pd.read_sql_query(events_query, connection)
 complete_match_data = pd.read_sql_query(complete_match_query, connection)
@@ -49,28 +50,43 @@ participants_data['match_id'] = participants_data['match_id'].astype(str)
 
 events_data['participant_id'] = events_data['participant_id'].astype(str)
 events_data['match_id'] = events_data['match_id'].astype(str)
-merged_data = pd.merge(participants_data, events_data, on=['participant_id','match_id'])
+merged_data = pd.merge(participants_data, events_data, on=['match_id', 'participant_id'])
 
-final_data = pd.merge(merged_data, complete_match_data[['match_id', 'win']], left_on='match_id', right_on='match_id')
+final_data = pd.merge(merged_data, complete_match_data[['match_id', 'win']] )
+final_data = final_data.drop_duplicates()
+
+#Feature Engineering
+final_data['timestamp_mins']=final_data['timestamp_y']/60000
+final_data['KDA_Ratio'] = (final_data['kills'] + final_data['assists']) / (final_data['deaths'] + 1)
+final_data['GPM'] = final_data['totalGold'] / (final_data['timestamp_mins'])
+final_data['DPM'] = (final_data['magicDamageDone'] + final_data['physicalDamageDone'] + final_data['trueDamageDone']) / (final_data['timestamp_mins'] )
+# final_data['CS_Per_Minute'] = final_data['creepScore'] / (final_data['timestamp_mins'])
 
 
 
-# Assuming you have the features (X) and target variable (y) columns selected
-# Replace 'feature1', 'feature2', ..., 'featureN' with your actual feature columns
-X = final_data[['currentGold', 'magicDamageDone', 'physicalDamageDone', 'trueDamageDone', 'magicDamageTaken', 'physicalDamageTaken', 'trueDamageTaken', 'xp', 'timeEnemySpentControlled', 'totalGold']]
+features_to_scale = ['currentGold', 'magicDamageDone', 'physicalDamageDone', 'trueDamageDone',
+                      'magicDamageTaken', 'physicalDamageTaken', 'trueDamageTaken', 'xp',
+                      'timeEnemySpentControlled', 'totalGold', 'kills', 'deaths', 'assists',
+                      'timestamp_mins', 'KDA_Ratio', 'GPM', 'DPM']
+X = final_data[features_to_scale]
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+X_scaled_df = pd.DataFrame(X_scaled, columns=features_to_scale)
+
+additional_features = ['kills', 'deaths', 'assists']
+X_additional = final_data[additional_features]
+X = pd.concat([X, X_additional], axis=1)
+
 y = final_data['win']
 
 
-# Split the data into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Standardize the data for Neural Network
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
 
-# Custom scoring function giving more weight to specific features
 def custom_scoring_function(y_true, y_pred):
     print(f"Shapes - y_true: {y_true.shape}, y_pred: {y_pred.shape}")
     weights = np.array([1.0, 1.0, 1.0, 1.02, 1.02, 1.0, 1.0, 1.0, 1.02])  # Adjust weights as needed
@@ -88,9 +104,7 @@ models = [
 ]
 
 
-# Ensemble model
-# Ensemble model
-ensemble_model = VotingClassifier(estimators=[(str(i), model) for i, model in enumerate(models)], voting='hard')
+ensemble_model = VotingClassifier(estimators=[(str(i), model) for i, model in enumerate(models)], voting='soft')
 
 # Cross-validation
 # cv_results = cross_val_score(ensemble_model, X, y, cv=5, scoring=custom_scorer)
@@ -106,19 +120,15 @@ accuracy_ensemble = accuracy_score(y_test, y_pred_ensemble)
 print(f'Ensemble Model Accuracy: {accuracy_ensemble}')
 
 batch_size = 1024
-# Training the model without parallelism
-# Training the models
-for model in models:
+def train_and_predict(model, X_train, y_train, X_test):
     model_name = model.__class__.__name__
     print(f"Training {model_name}...")
-
+    
     if "NeuralNetwork" in model_name:
-        model.fit(X_train_scaled, y_train)
-        y_pred = model.predict(X_test_scaled)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
     elif "RandomForest" in model_name:
-        for i in range(0, len(X_train), batch_size):
-            end = min(i + batch_size, len(X_train))
-            model.fit(X_train[i:end], y_train[i:end])
+        model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
     else:
         model.fit(X_train, y_train)
@@ -127,6 +137,13 @@ for model in models:
     # Evaluate the model
     accuracy = accuracy_score(y_test, y_pred)
     print(f"{model_name} Accuracy: {accuracy}")
+    
+    return accuracy
+
+results = Parallel(n_jobs=3)(
+    delayed(train_and_predict)(model, X_train, y_train, X_test)
+    for model in models
+)
 
 # For Neural Network using TensorFlow/Keras
 model_nn = keras.Sequential([
@@ -137,11 +154,24 @@ model_nn = keras.Sequential([
 model_nn.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
 print("Training Neural Network...")
-model_nn.fit(X_train_scaled, y_train, epochs=10, batch_size=32, validation_split=0.2)
+early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+
+history = model_nn.fit(X_train_scaled, y_train, epochs=10, batch_size=32, validation_split=0.2, callbacks=[early_stopping])
+print(history.history)
+
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend(['Train', 'Validation'], loc='upper left')
+plt.show()
 
 # Evaluate the Neural Network
 accuracy_nn = model_nn.evaluate(X_test_scaled, y_test)[1]
 print(f"Neural Network Accuracy: {accuracy_nn}")
+
+
 
 # Close the database connection
 connection.close()
