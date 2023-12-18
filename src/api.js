@@ -1,8 +1,8 @@
 const axios = require('axios');
 
 
-const apiKey = 'RGAPI-3fb1dc4d-f2e3-4fd4-98fe-962d1739bec6';
-const riotIDs = ['Kailinho/NA1','Sophist Sage/0409','Skollie/420','Isles2/NA1','Refugy/NA1','DuoSumo/NA1'];  
+const apiKey = 'RGAPI-8ea7f2b5-052f-4a16-9b0b-f97786be472b';
+const riotIDs = ['Yozu/Lux','Unyielding/NA1','Skollie/420','aishieryu/alive','Anyday/1221','Solaros/NA1'];  
 const puuids = [];
 const headers = {
     'X-Riot-Token': apiKey,

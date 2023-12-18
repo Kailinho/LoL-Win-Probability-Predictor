@@ -7,18 +7,18 @@ from sqlalchemy import create_engine
 import time
 import random
 
-puuids = ["K99JJoKjGncUxrr3I-bkpBccFtclLglnNGeClOrqLOHvQDDdk2Evie7gS4M1WrcqoMLt0PXptFmJ6w",
-  "-23srJpsUju9lhDerocvX4vyCUBo1hy_7vmUK-4Lrd8SWwvQhKNXXrN59DzJCfe7fDuwwJ96HoPx-A",
-  "PjC0jg9-PBOp5U3EHHhjzVr9CE2zO52U8XWbgY3oyzH8uPiD8WMGydSaFn6SEb9di3PotV9QpeFqAw",
-  "k4nrtbfL-1H_v-vZSWGV5VJgYDZI9nbKMczJZVJe2PA0ftWfq4SZlAazXa05Ba2sXkFstqb2yQg3lA",
-  "W4lmDnUA7NGbcWIYGv9rR3TdozbM-Rb2Sw6ZDU-YCGVPqxHhRYbt2-Q1JlbWXAnGIBt-3Ko2s1-w-Q",
-  "UwlApvfPP2oVFUaYsn6XDirzuPEK2iu-isagNb3oN5lv9AJ9j6J47PgOkonUy8KrYAzedWk8D5tTDg"
+puuids = [
+  '26AyL0tOH0kFRimTlUIUgQKYaSHzzPWgKfyUeG6anJmp4mQn7xalvsv2p-gfd69IG-8Xu0-iNbHE5A',
+  '5nQ9C4WoUW1Sh77ycj25diDSchnuY5mvCT5ChfJyEhBTjRDFqN50qQE2DsAbRAHzo4FbTVf7jhyffw',
+  '4kKOYUIOIVoWrbPr8JESr7l_JLizWOemuSySFgnDZk1qrdCKmINukax-732AAh6qG_WttH_Qi2ExLA',
+  'gbCJkmT5muTMKCX1ZS6LmoRtOXfeLU7qJebVungHTp7VCk9Slf4_bxSbrVOtLxqNNReeStNEQi5PLA',
+  'Ud2nyUv5nYT2JdcYNyla_MZmEUnLePzxa_1D6pTGiGbkoh0yA7JbBJM4ZI3yyCaezMcTF5XusepB3g'
 ]
 
 
 riot_api_base_url = 'https://americas.api.riotgames.com/'
-api_key = 'RGAPI-3fb1dc4d-f2e3-4fd4-98fe-962d1739bec6'
-headers = {'X-Riot-Token': api_key}
+api_key = 'RGAPI-8ea7f2b5-052f-4a16-9b0b-f97786be472b'
+headers = {'X-Riot-Token':api_key}
 summoner_name = 'Kailinho'
 database_uri = 'postgresql://kai:kkaakkaa@localhost:5432/lol_matchinfo'
 engine = create_engine(database_uri)
@@ -30,24 +30,27 @@ def get_matches(puuid, requests_per_minute=50, cooldown_duration=30):
     global participants_df, events_df, total_matchstats_df
     try:
         match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
-        response = requests.get(match_list_url, headers=headers)
+
+        response = requests.get(match_list_url , headers=headers)
         match_id_list = response.json()
 
         print(f'Match IDs for PUUID {puuid}: {match_id_list}')
 
         for match_id in match_id_list:
-            get_match_info(match_id)
-            time.sleep(60/requests_per_minute)
+           get_match_info(match_id)
+           time.sleep(60 / requests_per_minute)
+
     except requests.exceptions.RequestException as error:
         print(f'Error: {error}')
+
     time.sleep(cooldown_duration)
 
-def get_more_players(initial_puuids, num_additional_players=6):
+def get_more_players(initial_puuids, num_additional_players=8):
     additional_puuids = set()
 
     for puuid in initial_puuids:
         try:
-            match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
+            match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=75&api_key={api_key}'
             response = requests.get(match_list_url, headers=headers)
             match_id_list = response.json()
 
@@ -66,18 +69,20 @@ def get_more_players(initial_puuids, num_additional_players=6):
 
 
 
-def collect_aggregated_data(frames,match_id):
-    global participants_df, events_df 
+def collect_aggregated_data(frames, match_id):
+    global participants_df, events_df
 
-    participants_columns = ['match_id','participant_id','currentGold', 'magicDamageDone', 'physicalDamageDone', 'trueDamageDone',
-                             'magicDamageTaken', 'physicalDamageTaken', 'trueDamageTaken', 'xp',
-                             'timeEnemySpentControlled', 'totalGold','timestamp']
+    participants_columns = ['match_id', 'participant_id', 'currentGold', 'magicDamageDone', 'physicalDamageDone',
+                             'trueDamageDone', 'magicDamageTaken', 'physicalDamageTaken', 'trueDamageTaken', 'xp',
+                             'timeEnemySpentControlled', 'totalGold', 'timestamp']
 
-    events_columns = ['match_id','participant_id', 'kills', 'deaths', 'assists']
+    events_columns = ['match_id', 'participant_id', 'kills', 'deaths', 'assists', 'dragon_kills', 'turret_plates',
+                      'inhibitor_kills']
 
     participants_df = pd.DataFrame(columns=participants_columns)
     events_df = pd.DataFrame(columns=events_columns)
-    events_data = {'match_id': {}, 'participant_id': {}, 'kills': {}, 'deaths': {}, 'assists': {}, 'timestamp':{}}
+    events_data = {'match_id': {}, 'participant_id': {}, 'kills': {}, 'deaths': {}, 'assists': {}, 'timestamp': {},
+                   'dragon_kills': {}, 'turret_plates': {}, 'inhibitor_kills': {}, }
 
     for frame in frames:
         participant_frames = frame['participantFrames']
@@ -86,7 +91,6 @@ def collect_aggregated_data(frames,match_id):
         timestamp = frame['timestamp']
         for event in events:
             if event['type'] == 'CHAMPION_KILL':
-                
                 # Increment kill count for killer
                 if 'killerId' in event:
                     killer_id = event['killerId']
@@ -109,8 +113,28 @@ def collect_aggregated_data(frames,match_id):
                         events_data['participant_id'][assist_id] = assist_id
                         events_data['match_id'][assist_id] = match_id
                         events_data['timestamp'][assist_id] = event['timestamp']
-        
-        
+
+
+            elif event['type'] == 'ELITE_MONSTER_KILL' and event['monsterType'] == 'DRAGON':
+                team_id = event['killerTeamId']
+                participant_id = event['killerId']
+                dragon_kills = events_data['dragon_kills'].get(participant_id, 0) + 1
+                events_data['dragon_kills'][participant_id] = dragon_kills
+                if team_id == 200 and 6 <= participant_id <= 10:
+                    events_data['dragon_kills'][participant_id] += 1
+                elif team_id == 100 and 1 <= participant_id <= 5:
+                    events_data['dragon_kills'][participant_id] += 1
+
+            elif event['type'] == 'TURRET_PLATE_DESTROYED':
+                killer_id = event['killerId']
+                turret_plates_destroyed = events_data['turret_plates'].get(killer_id, 0) + 1
+                events_data['turret_plates'][killer_id] = turret_plates_destroyed
+
+            elif event['type'] == 'BUILDING_KILL' and event['buildingType'] == 'INHIBITOR_BUILDING':
+                participant_id = event['killerId']
+                inhibitor_kills = events_data['inhibitor_kills'].get(participant_id, 0) + 1
+                events_data['inhibitor_kills'][participant_id] = inhibitor_kills
+
         # Extract participant information
         for participant_id, participant_frame in participant_frames.items():
             try:
@@ -199,16 +223,13 @@ def get_match_info(match_id):
 
         match_timeline = match_timeline_data['info'].get('frames', [])
         
-        # Initialize match_stats_data as an empty dictionary
-        match_stats_data = {}
-
         # Collect aggregated data
         collect_aggregated_data(match_timeline,match_id)
 
         # Additional information for each participant from key_list
-        key_list = ['largestMultiKill', 'longestTimeSpentLiving', 'pentaKills', 'quadraKills',
-                    'sightWardsBoughtInGame', 'timeCCingOthers', 'totalMinionsKilled',
-                    'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'tripleKills', 'turretKills', 'visionScore', 'win']
+        key_list = [ 'longestTimeSpentLiving', 'pentaKills', 
+                    'timeCCingOthers', 'totalMinionsKilled',
+                    'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', 'win','championName']
 
         participants_data = []
 
@@ -216,17 +237,20 @@ def get_match_info(match_id):
             participant_data = {'participantId': participant_id}
             for key in key_list:
                 # Extract additional participant information from key_list
+
                 if key in match_info['participants'][participant_id - 1]:
                     participant_data[key] = match_info['participants'][participant_id - 1][key]
 
             # Add additional participant information to participants_data list
             participants_data.append(participant_data)
 
-        # match_stats_data['participantsData'] = participants_data
-
         total_matchstats_df = pd.DataFrame(columns=key_list)
         total_matchstats_df = pd.concat([total_matchstats_df, pd.DataFrame(participants_data)], ignore_index=True).fillna(0)
-        total_matchstats_df[['largestMultiKill', 'longestTimeSpentLiving', 'pentaKills', 'quadraKills', 'sightWardsBoughtInGame', 'timeCCingOthers', 'totalMinionsKilled', 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'tripleKills', 'turretKills', 'visionScore']] = total_matchstats_df[['largestMultiKill', 'longestTimeSpentLiving', 'pentaKills', 'quadraKills', 'sightWardsBoughtInGame', 'timeCCingOthers', 'totalMinionsKilled', 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'tripleKills', 'turretKills', 'visionScore']].astype(int)
+        total_matchstats_df[[ 'longestTimeSpentLiving', 'pentaKills', 
+                 'timeCCingOthers', 'totalMinionsKilled',
+                 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', ]] = total_matchstats_df[['longestTimeSpentLiving', 'pentaKills', 
+                 'timeCCingOthers', 'totalMinionsKilled',
+                 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', ]].astype(int)
         total_matchstats_df['match_id'] = match_metadata.get('matchId', 'N/A')
         total_matchstats_df['gameMode'] = match_info['gameMode']
         total_matchstats_df['gameDuration'] = match_info['gameDuration']

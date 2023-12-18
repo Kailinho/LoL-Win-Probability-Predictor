@@ -18,6 +18,10 @@ from joblib import Parallel, delayed
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.layers import Dropout
+from sklearn.model_selection import GridSearchCV
+from scikeras.wrappers import KerasClassifier
 
 
 # Connect to the PostgreSQL database
@@ -35,12 +39,12 @@ engine = create_engine(
 
 
 
-data_query = 'SELECT * FROM finaltest;'
+data_query = 'SELECT * FROM fin;'
 final_data = pd.read_sql_query(data_query, engine)
 
-final_data = final_data.drop_duplicates()
 final_data['participant_id'] = final_data['participant_id'].astype(str)
 final_data['match_id'] = final_data['match_id'].astype(str)
+final_data['championName'] = final_data['championName'].astype(str)
 
 #Feature Engineering
 final_data['timestamp_mins']=final_data['event_timestamp']/60000
@@ -48,10 +52,10 @@ final_data['KDA_Ratio'] = (final_data['kills'] + final_data['assists']) / (final
 final_data['GPM'] = final_data['totalgold'] / (final_data['timestamp_mins'])
 
 
-features_to_scale = ['currentgold', 'damageperminute',
+features_to_scale = ['damageperminute',
                       'totaldamagetaken', 'xp',
-                      'totalgold', 'kills', 'deaths', 'assists',
-                      'event_timestamp', 'KDA_Ratio', 'GPM']
+                      'kills', 'deaths', 'assists',
+                      'event_timestamp', 'KDA_Ratio', 'GPM','turret_plates','inhibitor_kills','dragon_kills']
 
 print(final_data.head())
 print(final_data.shape)
@@ -124,32 +128,44 @@ results = Parallel(n_jobs=3)(
 )
 
 # Neural Network using TensorFlow/Keras
-model_nn = keras.Sequential([
-    layers.Dense(128, activation='relu', input_shape=(X_train_scaled.shape[1],)),
-    layers.Dense(1, activation='sigmoid')
-])
+def create_model():
+    model = keras.Sequential([
+        layers.Dense(128, activation='relu', input_shape=(X_train_scaled.shape[1],)),
+        layers.Dense(1, activation='sigmoid')
+    ])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
 
-model_nn.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+model_nn = KerasClassifier(model=create_model, epochs=15, batch_size=32, verbose=0)
+
+model_nn.fit(X_train_scaled, y_train)
+
+# Evaluate on the test set
+y_pred_test = model_nn.predict(X_test_scaled)
+accuracy_test = accuracy_score(y_test, y_pred_test)
+print(f"Final Test Accuracy: {accuracy_test}")
 
 # Training Neural Network
 print("Training Neural Network...")
 early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
 
-history = model_nn.fit(X_train_scaled, y_train, epochs=10, batch_size=32, validation_split=0.2, callbacks=[early_stopping])
-print(history.history)
+model_nn.fit(X_train_scaled, y_train, epochs=15, batch_size=32, validation_split=0.2, callbacks=[early_stopping])
+keras_model = model_nn.model_
+history = keras_model.history.history
+print(history)
 
 # Plotting training history
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
+plt.plot(history['accuracy'])
+plt.plot(history['val_accuracy'])
 plt.title('Model Accuracy')
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.show()
 
-# Evaluate the Neural Network
-accuracy_nn = model_nn.evaluate(X_test_scaled, y_test)[1]
-print(f"Neural Network Accuracy: {accuracy_nn}")
 
-# Close the database connection
+y_pred_test = model_nn.predict(X_test_scaled)
+accuracy_nn = accuracy_score(y_test, y_pred_test)
+print(f"Neural Network Accuracy: {accuracy_nn}")
 engine.dispose()
