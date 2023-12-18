@@ -4,6 +4,8 @@ import os
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
+import time
+import random
 
 puuids = ["K99JJoKjGncUxrr3I-bkpBccFtclLglnNGeClOrqLOHvQDDdk2Evie7gS4M1WrcqoMLt0PXptFmJ6w",
   "-23srJpsUju9lhDerocvX4vyCUBo1hy_7vmUK-4Lrd8SWwvQhKNXXrN59DzJCfe7fDuwwJ96HoPx-A",
@@ -24,7 +26,7 @@ participants_df = pd.DataFrame()
 events_df = pd.DataFrame()
 total_matchstats_df = pd.DataFrame()
 
-def get_matches(puuid):
+def get_matches(puuid, requests_per_minute=50, cooldown_duration=30):
     global participants_df, events_df, total_matchstats_df
     try:
         match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
@@ -35,9 +37,33 @@ def get_matches(puuid):
 
         for match_id in match_id_list:
             get_match_info(match_id)
-
+            time.sleep(60/requests_per_minute)
     except requests.exceptions.RequestException as error:
         print(f'Error: {error}')
+    time.sleep(cooldown_duration)
+
+def get_more_players(initial_puuids, num_additional_players=6):
+    additional_puuids = set()
+
+    for puuid in initial_puuids:
+        try:
+            match_list_url = f'{riot_api_base_url}lol/match/v5/matches/by-puuid/{puuid}/ids?start=1&count=50&api_key={api_key}'
+            response = requests.get(match_list_url, headers=headers)
+            match_id_list = response.json()
+
+            for match_id in random.sample(list(match_id_list), min(num_additional_players, len(match_id_list))):
+                match_url = f'{riot_api_base_url}lol/match/v5/matches/{match_id}?api_key={api_key}'
+                match_response = requests.get(match_url, headers=headers)
+                match_data = match_response.json()
+
+                participants = match_data.get('info', {}).get('participants', [])
+                additional_puuids.update(participant['puuid'] for participant in participants)
+
+        except requests.exceptions.RequestException as error:
+            print(f'Error: {error}')
+
+    return list(additional_puuids)
+
 
 
 def collect_aggregated_data(frames,match_id):
@@ -153,10 +179,15 @@ def get_match_info(match_id):
 
         match_url = f'{riot_api_base_url}lol/match/v5/matches/{match_id}?api_key={api_key}'
         match_response = requests.get(match_url, headers=headers)
-        match_data = match_response.json()
 
+        match_data = match_response.json()
         if match_data is None:
             print('Error: Failed to fetch match data')
+            return
+
+        # Check if 'metadata' key is present in match_data
+        if 'metadata' not in match_data:
+            print('Error: No "metadata" in match data')
             return
 
         match_metadata = match_data['metadata']
@@ -210,6 +241,8 @@ def get_match_info(match_id):
 
 
 
+additional_puuids = get_more_players(puuids)
+all_puuids = puuids + additional_puuids
 
-for puuid in puuids:
+for puuid in all_puuids:
     get_matches(puuid)
