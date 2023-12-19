@@ -22,7 +22,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Dropout
 from sklearn.model_selection import GridSearchCV
 from scikeras.wrappers import KerasClassifier
-
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import confusion_matrix, roc_curve, auc
 
 # Connect to the PostgreSQL database
 connection = psycopg2.connect(
@@ -39,7 +40,7 @@ engine = create_engine(
 
 
 
-data_query = 'SELECT * FROM fin;'
+data_query = 'SELECT * FROM final;'
 final_data = pd.read_sql_query(data_query, engine)
 
 final_data['participant_id'] = final_data['participant_id'].astype(str)
@@ -49,11 +50,11 @@ final_data['championName'] = final_data['championName'].astype(str)
 #Feature Engineering
 final_data['timestamp_mins']=final_data['event_timestamp']/60000
 final_data['KDA_Ratio'] = (final_data['kills'] + final_data['assists']) / (final_data['deaths'] + 1)
-final_data['GPM'] = final_data['totalgold'] / (final_data['timestamp_mins'])
+final_data['GPM'] = final_data['totalGold'] / (final_data['timestamp_mins'])
 
 
-features_to_scale = ['damageperminute',
-                      'totaldamagetaken', 'xp',
+features_to_scale = ['damagePerMinute',
+                      'totalDamageTaken', 'xp',
                       'kills', 'deaths', 'assists',
                       'event_timestamp', 'KDA_Ratio', 'GPM','turret_plates','inhibitor_kills','dragon_kills']
 
@@ -117,9 +118,33 @@ def train_and_predict(model, X_train, y_train, X_test):
 
     # Evaluate the model
     accuracy = accuracy_score(y_test, y_pred)
-    print(f"{model_name} Accuracy: {accuracy}")
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)    
+
+    print(f"{model_name} Metrics:")
+    print(f"Accuracy: {accuracy}")
+    print(f"Precision: {precision}")
+    print(f"Recall: {recall}")
+    print(f"F1 Score: {f1}")
     
-    return accuracy
+    if "RandomForest" in model_name:
+        y_pred_proba = model.predict_proba(X_test)[:, 1]
+        roc_auc = roc_auc_score(y_test, y_pred_proba)
+        print(f"AUC-ROC: {roc_auc}")
+
+        # Plot ROC curve
+        fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic (ROC) Curve')
+        plt.legend(loc="lower right")
+        plt.show()
+    
+    return accuracy, precision, recall, f1
 
 # Individual models
 results = Parallel(n_jobs=3)(
@@ -144,7 +169,31 @@ model_nn.fit(X_train_scaled, y_train)
 # Evaluate on the test set
 y_pred_test = model_nn.predict(X_test_scaled)
 accuracy_test = accuracy_score(y_test, y_pred_test)
-print(f"Final Test Accuracy: {accuracy_test}")
+precision_test = precision_score(y_test, y_pred_test)
+recall_test = recall_score(y_test, y_pred_test)
+f1_test = f1_score(y_test, y_pred_test)
+
+print(f"Final Test Metrics:")
+print(f"Accuracy: {accuracy_test}")
+print(f"Precision: {precision_test}")
+print(f"Recall: {recall_test}")
+print(f"F1 Score: {f1_test}")
+
+# AUC-ROC for Neural Network
+y_pred_proba_nn = model_nn.predict_proba(X_test_scaled)[:, 1]
+roc_auc_nn = roc_auc_score(y_test, y_pred_proba_nn)
+
+# Plot ROC curve for Neural Network
+fpr_nn, tpr_nn, _ = roc_curve(y_test, y_pred_proba_nn)
+plt.figure()
+plt.plot(fpr_nn, tpr_nn, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc_nn)
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC) Curve for Neural Network')
+plt.legend(loc="lower right")
+plt.show()
+
 
 # Training Neural Network
 print("Training Neural Network...")
@@ -154,6 +203,7 @@ model_nn.fit(X_train_scaled, y_train, epochs=15, batch_size=32, validation_split
 keras_model = model_nn.model_
 history = keras_model.history.history
 print(history)
+
 
 # Plotting training history
 plt.plot(history['accuracy'])

@@ -227,14 +227,14 @@ def get_match_info(match_id):
         collect_aggregated_data(match_timeline,match_id)
 
         # Additional information for each participant from key_list
-        key_list = [ 'longestTimeSpentLiving', 'pentaKills', 
+        key_list = [ 'pentaKills', 
                     'timeCCingOthers', 'totalMinionsKilled',
                     'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', 'win','championName']
 
         participants_data = []
 
         for participant_id in range(1, 11):
-            participant_data = {'participantId': participant_id}
+            participant_data = {'participant_id': participant_id}
             for key in key_list:
                 # Extract additional participant information from key_list
 
@@ -246,9 +246,9 @@ def get_match_info(match_id):
 
         total_matchstats_df = pd.DataFrame(columns=key_list)
         total_matchstats_df = pd.concat([total_matchstats_df, pd.DataFrame(participants_data)], ignore_index=True).fillna(0)
-        total_matchstats_df[[ 'longestTimeSpentLiving', 'pentaKills', 
+        total_matchstats_df[[ 'pentaKills', 
                  'timeCCingOthers', 'totalMinionsKilled',
-                 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', ]] = total_matchstats_df[['longestTimeSpentLiving', 'pentaKills', 
+                 'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', ]] = total_matchstats_df[['pentaKills', 
                  'timeCCingOthers', 'totalMinionsKilled',
                  'totalTimeCrowdControlDealt', 'totalUnitsHealed', 'turretKills', 'visionScore', ]].astype(int)
         total_matchstats_df['match_id'] = match_metadata.get('matchId', 'N/A')
