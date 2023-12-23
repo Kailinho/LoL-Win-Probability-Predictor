@@ -135,8 +135,15 @@ def collect_aggregated_data(frames, match_id):
 
             elif event['type'] == 'BUILDING_KILL' and event['buildingType'] == 'INHIBITOR_BUILDING':
                 participant_id = event['killerId']
-                inhibitor_kills = events_data['inhibitor_kills'].get(participant_id, 0) + 1
-                events_data['inhibitor_kills'][participant_id] = inhibitor_kills
+                if 6 <= participant_id <= 10:
+                    for teammate_id in range(6, 11):
+                        inhibitor_kills = events_data['inhibitor_kills'].get(teammate_id, 0) + 1
+                        events_data['inhibitor_kills'][teammate_id] = inhibitor_kills
+                elif 1 <= participant_id <= 5:
+                    for teammate_id in range(1, 6):
+                        inhibitor_kills = events_data['inhibitor_kills'].get(teammate_id, 0) + 1
+                        events_data['inhibitor_kills'][teammate_id] = inhibitor_kills
+
 
         # Extract participant information
         for participant_id, participant_frame in participant_frames.items():
