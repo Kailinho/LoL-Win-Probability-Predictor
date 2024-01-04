@@ -9,7 +9,7 @@ The data collection module (`match.py`) interacts with the Riot Games API to gat
 ### Setup
 
 1. Replace `api_key` with your Riot Games API key.
-2. Set `summoner_name` to the summoner name of interest.
+2. Set `puuids` based on the puuids gathered (`api.js`) for interested users.
 3. Ensure PostgreSQL is installed and running locally.
 4. Update `database_uri` with your PostgreSQL database connection URI.
 
@@ -24,7 +24,7 @@ The model training module (`train_model.py`) utilizes machine learning models to
 ### Setup
 
 1. Update the PostgreSQL connection details in the `train_model.py` script.
-2. Ensure required Python libraries are installed (`pandas`, `scikit-learn`, `tensorflow`).
+2. Ensure required Python libraries are installed .
 
 ### Usage
 

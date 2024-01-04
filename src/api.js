@@ -1,7 +1,11 @@
 const axios = require('axios');
+const path = require('path');
+const dotenv = require('dotenv');
 
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const apiKey = 'RGAPI-7c36b354-8d93-429e-a849-9b225e83eb54';
+const apiKey = process.env.RIOT_API_KEY;
 const riotIDs = ['Yozu/Lux','Unyielding/NA1','Skollie/420','aishieryu/alive','Anyday/1221','Solaros/NA1','ToasyAlex/NA1','Legacy/L77','DrunkCatalyst/NA1'];  
 const puuids = [];
 const headers = {

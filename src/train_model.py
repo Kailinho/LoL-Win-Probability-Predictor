@@ -1,52 +1,60 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import make_scorer, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import (
+    make_scorer,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+)
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 from sklearn.neural_network import MLPClassifier
-import psycopg2
-from sqlalchemy import create_engine
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from joblib import Parallel, delayed
 from tensorflow import keras
 from tensorflow.keras import layers
-from sklearn.ensemble import VotingClassifier
-from sklearn.model_selection import cross_val_score
-from joblib import Parallel, delayed
+from sklearn.metrics import roc_curve, auc
+from scikeras.wrappers import KerasClassifier
 import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.keras.callbacks import EarlyStopping
-from sklearn.metrics import roc_curve, auc
-from scikeras.wrappers import KerasClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import LabelEncoder
+import os
+from dotenv import load_dotenv
+import psycopg2
+from sqlalchemy import create_engine
+
+load_dotenv()
+
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DATABASE_URI = os.getenv("DATABASE_URI")
 
 # Connect to the PostgreSQL database
 connection = psycopg2.connect(
-    dbname="lol_matchinfo",
-    user="kai",
-    password="kkaakkaa",
-    host="localhost",
-    port="5432"
+    dbname=DB_NAME,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT
 )
 
 engine = create_engine(
-    'postgresql://kai:kkaakkaa@localhost:5432/lol_matchinfo'
+    DATABASE_URI
 )
 
-
-
 # Data retrieval
-data_query = 'SELECT * FROM fin;'
+data_query = 'SELECT * FROM finaldata;'
 final_data = pd.read_sql_query(data_query, engine)
 
 # Data preprocessing
 final_data['participant_id'] = final_data['participant_id'].astype(str)
 final_data['championName'] = final_data['championName'].astype(str)
-
-# Feature Engineering
-final_data['timestamp_mins'] = final_data['event_timestamp'] / 60000
-final_data['KDA_Ratio'] = (final_data['kills'] + final_data['assists']) / (final_data['deaths'] + 1)
-final_data['GPM'] = final_data['totalGold'] / (final_data['timestamp_mins'])
 
 le_champion = LabelEncoder()
 final_data['championName'] = le_champion.fit_transform(final_data['championName'])
@@ -54,10 +62,14 @@ final_data['championName'] = le_champion.fit_transform(final_data['championName'
 le_position = LabelEncoder()
 final_data['teamPosition'] = le_position.fit_transform(final_data['teamPosition'])
 
+le_team_id = LabelEncoder()
+final_data['teamId'] = le_team_id.fit_transform(final_data['teamId'])
+
 
 # Define features to scale
 features_to_scale = ['damagePerMinute', 'totalDamageTaken', 'xp', 'kills', 'deaths', 'assists',
-                      'event_timestamp', 'KDA_Ratio', 'GPM', 'turret_plates', 'inhibitor_kills', 'dragon_kills','killParticipation','teamDamagePercentage','teamGoldDifference']
+                      'KDA_Ratio', 'turret_plates', 'inhibitor_kills', 'dragon_kills','killParticipation','teamDamagePercentage','teamGoldDifference',
+                      'laneGoldDifference','damagePerGold']
 print(final_data.shape)
 
 # Extract features and target variable
@@ -79,15 +91,15 @@ feature_weights = {
     'kills': 1.5,
     'deaths': 1.2,
     'assists': 1.1,
-    'event_timestamp': 1.0,
     'KDA_Ratio': 1.2,
-    'GPM': 1.3,
     'turret_plates': 1.3,
     'inhibitor_kills': 1.2,
     'dragon_kills': 1.1,
-    'killParticipation':1.2
-    ,'teamDamagePercentage':1.3,
-    'teamGoldDifference':1.4
+    'killParticipation':1.2,
+    'teamDamagePercentage':1.3,
+    'teamGoldDifference':1.4,
+    'damagePerGold':1.4,
+    'laneGoldDifference':1.3
 }
 
 # Apply feature weights to training and test sets
@@ -130,7 +142,7 @@ y_pred_ensemble = ensemble_model.predict(X_test)
 accuracy_ensemble = accuracy_score(y_test, y_pred_ensemble)
 print(f'Ensemble Model Accuracy: {accuracy_ensemble}')
 
-
+# Function to train and predict for individual models
 def train_and_predict(model, X_train, y_train, X_test, y_test):
     model_name = model.__class__.__name__
     print(f"Training {model_name}...")
@@ -152,6 +164,7 @@ def train_and_predict(model, X_train, y_train, X_test, y_test):
     print(f"F1 Score: {f1}")
 
     if "RandomForest" in model_name:
+        # Compute AUC-ROC for RandomForest
         y_pred_proba = model.predict_proba(X_test)[:, 1]
         roc_auc = roc_auc_score(y_test, y_pred_proba)
         print(f"AUC-ROC: {roc_auc}")
@@ -168,14 +181,14 @@ def train_and_predict(model, X_train, y_train, X_test, y_test):
         plt.show()
 
     return accuracy, precision, recall, f1
-# Individual models
+# Training and predicting for individual models in parallel
 results = Parallel(n_jobs=3)(
     delayed(train_and_predict)(model, X_train, y_train, X_test, y_test)
     for model in models
 )
 
 
-# Neural Network using TensorFlow/Keras
+# Function to create a neural network model using TensorFlow/Keras
 def create_model():
     model = keras.Sequential([
         layers.Dense(128, activation='relu', input_shape=(X_train_scaled_weighted.shape[1],)),
@@ -185,8 +198,10 @@ def create_model():
     return model
 
 
+# Creating a KerasClassifier for the neural network model
 model_nn = KerasClassifier(model=create_model, epochs=15, batch_size=32, verbose=0)
 
+# Fitting the neural network model
 model_nn.fit(X_train_scaled_weighted, y_train)
 
 # Evaluate on the test set
@@ -202,11 +217,11 @@ print(f"Precision: {precision_test}")
 print(f"Recall: {recall_test}")
 print(f"F1 Score: {f1_test}")
 
-# AUC-ROC for Neural Network
+# Computing AUC-ROC for Neural Network
 y_pred_proba_nn = model_nn.predict_proba(X_test_scaled_weighted)[:, 1]
 roc_auc_nn = roc_auc_score(y_test, y_pred_proba_nn)
 
-# Plot ROC curve for Neural Network
+# Plotting ROC curve for Neural Network
 fpr_nn, tpr_nn, _ = roc_curve(y_test, y_pred_proba_nn)
 plt.figure()
 plt.plot(fpr_nn, tpr_nn, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc_nn)
@@ -217,8 +232,7 @@ plt.title('Receiver Operating Characteristic (ROC) Curve for Neural Network')
 plt.legend(loc="lower right")
 plt.show()
 
-
-# Training Neural Network
+# Training the Neural Network model with early stopping
 print("Training Neural Network...")
 early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
 model_nn.fit(X_train_scaled_weighted, y_train, epochs=15, batch_size=32, validation_split=0.2, callbacks=[early_stopping])
@@ -226,7 +240,6 @@ model_nn.fit(X_train_scaled_weighted, y_train, epochs=15, batch_size=32, validat
 keras_model = model_nn.model_
 history = keras_model.history.history
 print(history)
-
 
 # Plotting training history
 plt.plot(history['accuracy'])
@@ -237,8 +250,10 @@ plt.ylabel('Accuracy')
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.show()
 
-
+# Evaluating the Neural Network model on the test set
 y_pred_test = model_nn.predict(X_test_scaled_weighted)
 accuracy_nn = accuracy_score(y_test, y_pred_test)
 print(f"Neural Network Accuracy: {accuracy_nn}")
+
+# Closing the database connection
 engine.dispose()
