@@ -30,18 +30,28 @@ Ensemble Model Accuracy: **0.8995223684690269**
 
 DecisionTreeClassifier Metrics:
 Accuracy: **0.8994713238779305**
+
 Precision: **0.9028663526600252**
+
 Recall: **0.9053317915209608**
+
 F1 Score: **0.9040973913043479**
+
 AUC-ROC: **0.8991835370591736**
 
 
+
 RandomForestClassifier Metrics:
-Accuracy:** 0.945046851642542**
+Accuracy: **0.945046851642542**
+
 Precision: **0.9447282796815507**
+
 Recall: **0.9506248519720802**
+
 F1 Score: **0.9476673935084236**
+
 AUC-ROC: **0.9896320727295794**
+
 
 ### Setup
 
